@@ -121,22 +121,51 @@ function altZoneFor(regions, x, y, splitFor = () => undefined) {
         rect: targetRect(region, kind, splitFor(region.index))};
 }
 
+// Edge drags, like Cinnamon's native tiling: a side edge gives that half, or
+// a quarter in its top/bottom 25% (so corners are quarters); the top edge
+// elsewhere fills the region.
 function edgeCandidate(regions, x, y, internalEdges = true, splitFor = () => undefined, band = 12) {
     const region = regionAt(regions, x, y);
     if (!region) return null;
+    const b = region.bounds, a = region.area;
+    const atLeft = x < b.x + band, atRight = x >= b.x + b.width - band;
     let kind, internal = false;
-    if (y <= region.area.y + band) {
-        kind = 'full'; // Top wins at corners, including the panel strip.
-    } else if (x < region.bounds.x + band) {
-        kind = 'left';
-        internal = region.index > 0;
-    } else if (x >= region.bounds.x + region.bounds.width - band) {
-        kind = 'right';
-        internal = region.index < regions[regions.length - 1].index;
+    if (atLeft || atRight) {
+        const side = atLeft ? 'left' : 'right';
+        internal = atLeft ? region.index > 0 : region.index < regions[regions.length - 1].index;
+        const yFrac = (y - a.y) / a.height;
+        kind = yFrac < 0.25 ? `top-${side}` : yFrac >= 0.75 ? `bottom-${side}` : side;
+    } else if (y <= a.y + band) {
+        kind = 'full'; // Includes the panel strip.
     } else return null;
     if (internal && !internalEdges) return null;
     return {key: `${region.index}:${kind}`, region: region.index, kind, internal,
         rect: targetRect(region, kind, splitFor(region.index))};
+}
+
+// Super+arrow tiling, Windows-style. `kind` is null for a normal window and
+// `regions` lists the monitor's region indexes, so a half can hop regions.
+// Returns {kind, region}, {restore: true}, or null for no change.
+function pushTile(kind, dir, region, regions) {
+    const mirror = k => k.replace(/left|right/, side => side === 'left' ? 'right' : 'left');
+    if (dir === 'left' || dir === 'right') {
+        const other = dir === 'left' ? 'right' : 'left';
+        if (!kind || kind === 'full') return {kind: dir, region};
+        if (kind === other) return {restore: true};
+        if (sideOf(kind) === other) return {kind: mirror(kind), region};
+        const next = regions[regions.indexOf(region) + (dir === 'left' ? -1 : 1)];
+        return next === undefined ? null : {kind: mirror(kind), region: next};
+    }
+    if (dir === 'up') {
+        if (!kind) return {kind: 'full', region};
+        if (kind === 'left' || kind === 'right') return {kind: `top-${kind}`, region};
+        if (kind.startsWith('bottom-')) return {kind: sideOf(kind), region};
+        return null;
+    }
+    if (kind === 'full') return {restore: true};
+    if (kind === 'left' || kind === 'right') return {kind: `bottom-${kind}`, region};
+    if (kind && kind.startsWith('top-')) return {kind: sideOf(kind), region};
+    return null;
 }
 
 var EdgeTracker = class EdgeTracker {

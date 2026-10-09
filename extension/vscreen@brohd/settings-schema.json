@@ -34,5 +34,9 @@
         "units": "milliseconds",
         "description": "Pause before snapping at an internal boundary",
         "dependency": "internal-edges"
+    },
+    "restore-edge-tiling": {
+        "type": "generic",
+        "default": false
     }
 }

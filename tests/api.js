@@ -36,5 +36,12 @@ check(typeof loaded.regionsFor === 'function', 'Geometry exported by Cinnamon mo
 check(typeof loaded.WindowState === 'function', 'State exported by Cinnamon module loader');
 check(typeof loaded.EdgeTracker === 'function', 'Dwell exported by Cinnamon module loader');
 check(typeof loaded.altZoneFor === 'function', 'Alt zones exported by Cinnamon module loader');
+check(typeof loaded.pushTile === 'function', 'Tile shortcuts exported by Cinnamon module loader');
+check(typeof Meta.keybindings_set_custom_handler === 'function', 'Keybinding override API');
+const muffin = imports.gi.Gio.SettingsSchemaSource.get_default().lookup('org.cinnamon.muffin', true);
+check(muffin && muffin.has_key('edge-tiling'), 'Muffin edge-tiling setting');
+const wmKeys = imports.gi.Gio.SettingsSchemaSource.get_default().lookup('org.cinnamon.desktop.keybindings.wm', true);
+for (const dir of ['left', 'right', 'up', 'down'])
+    check(wmKeys && wmKeys.has_key(`push-tile-${dir}`), `Tile shortcut push-tile-${dir}`);
 check(imports.gi.Clutter.ModifierType.MOD1_MASK === 8, 'Alt modifier mask matches adapter mock');
 print(`Installed Cinnamon API: ${assertions} assertions passed`);

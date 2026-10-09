@@ -47,12 +47,16 @@ function desktop() {
     const windows = [], errors = [];
     let pointer = [500, 500, 0], preview = null, nativeHides = 0;
     let wayland = false;
+    // Persisted across enable/disable within one desktop, like real settings.
+    const stored = {'restore-edge-tiling': false}, handlers = new Map();
+    let edgeTiling = true;
     const Meta = {WindowType: {NORMAL: 0, DIALOG: 1}, MaximizeFlags: {BOTH: 3},
         SizeChange: {MAXIMIZE: 0, UNMAXIMIZE: 1, FULLSCREEN: 2, UNFULLSCREEN: 3, TILE: 4},
         GrabOp: {MOVING: 1, KEYBOARD_MOVING: 257, RESIZING_E: 8193, RESIZING_W: 4097, RESIZING_S: 16385,
             RESIZING_N: 32769, RESIZING_NE: 40961, KEYBOARD_RESIZING_UNKNOWN: 769, FRAME_BUTTON: 4},
         is_wayland_compositor: () => wayland,
-        MonitorManager: {get: () => ({get_monitor_for_connector: key => screens.findIndex(m => m.key === key)})}};
+        MonitorManager: {get: () => ({get_monitor_for_connector: key => screens.findIndex(m => m.key === key)})},
+        keybindings_set_custom_handler: (name, fn) => { if (fn) handlers.set(name, fn); else handlers.delete(name); }};
     display.get_n_monitors = () => screens.length;
     display.get_monitor_name = i => screens[i].name;
     display.get_monitor_geometry = i => screens[i].bounds;
@@ -63,7 +67,7 @@ function desktop() {
     class Window extends Signals {
         constructor(rect = {x: 200, y: 150, width: 800, height: 600}) {
             super(); this.rect = Core.copyRect(rect); this.nativeRestore = Core.copyRect(rect);
-            this.maximized = 0; this.tile_mode = 0; this.fullscreen = false; this.minimum = 0;
+            this.maximized = 0; this.tile_mode = 0; this.fullscreen = false; this.minimum = 0; this.nativeMaximizes = 0;
             this.moves = 0; this.type = 0; this.resizeable = true;
             windows.push(this); display.emit('window-created', this);
         }
@@ -84,7 +88,7 @@ function desktop() {
             this.emit('position-changed'); this.emit('size-changed');
         }
         maximize() {
-            const old = this.get_frame_rect(); this.nativeRestore = old;
+            const old = this.get_frame_rect(); this.nativeRestore = old; this.nativeMaximizes++;
             // Muffin sets flags and emits notify before its size-change signal,
             // then updates the geometry. Match this ordering, not a DOM resize.
             this.maximized = 3;
@@ -117,6 +121,8 @@ function desktop() {
             this.callback = callback;
         }
         getOptions(key) { return this.options[key]; }
+        getValue(key) { return stored[key]; }
+        setValue(key, value) { stored[key] = value; }
         setOptions(key, value) { this.options[key] = value; }
         finalize() { this.finalized = true; }
     }
@@ -134,7 +140,9 @@ function desktop() {
         uiGroup: {add_child: actor => { preview = actor; }}};
     const mocks = {gi: {Meta, GLib: {SOURCE_REMOVE: false, get_monotonic_time: () => now * 1000},
         Gio: {DBus: {session: sessionBus, system: systemBus}, DBusCallFlags: {NONE: 0}, DBusSignalFlags: {NONE: 0},
-            Cancellable: class { cancel() {} }},
+            Cancellable: class { cancel() {} },
+            SettingsSchemaSource: {get_default: () => ({lookup: id => id === 'org.cinnamon.muffin' ? {} : null})},
+            Settings: class { get_boolean() { return edgeTiling; } set_boolean(_key, value) { edgeTiling = value; } }},
         Clutter: {EventType: {KEY_PRESS: 1}, KEY_Escape: 27, EVENT_PROPAGATE: false, ModifierType: {MOD1_MASK: 8},
             AnimationMode: {EASE_OUT_QUAD: 3}},
         St: {Widget: class { constructor() { this.visible = false; } set_position(x, y) { this.x = x; this.y = y; }
@@ -153,6 +161,8 @@ function desktop() {
         setScreens: s => { screens = s; layoutManager.emit('monitors-changed'); },
         dbusFail: () => { dbusError = true; }, wayland: () => { wayland = true; },
         preview: () => preview, nativeHides: () => nativeHides,
+        edgeTiling: () => edgeTiling, setEdgeTiling: value => { edgeTiling = value; }, stored, handlers,
+        push: (dir, window) => handlers.get(`push-tile-${dir}`)(display, window, null),
         start: () => { extension.enable(); advance(); },
         finish: () => {
             extension.disable(); advance(3000);
@@ -206,8 +216,8 @@ function desktop() {
     equal(d.extension.windows.get(w).state.placement, null, 'crossing without dwell does not snap');
     d.pointer(100, 300); d.begin(w); d.advance(); d.pointer(10, 500); d.advance(16); d.end(w); d.advance(200);
     equal(w.rect.width, 960, 'outer edge fills half region');
-    d.pointer(100, 300); d.begin(w); d.advance(); d.pointer(1921, 2); d.advance(16); d.end(w); d.advance(200);
-    equal(w.rect, {x: 1920, y: 30, width: 1920, height: 1050}, 'top drag fills region with priority over side');
+    d.pointer(100, 300); d.begin(w); d.advance(); d.pointer(2800, 2); d.advance(16); d.end(w); d.advance(200);
+    equal(w.rect, {x: 1920, y: 30, width: 1920, height: 1050}, 'top drag fills region');
     check(d.nativeHides() > 0, 'native preview hidden for managed drag');
     const previous = w.get_frame_rect();
     d.begin(w); d.advance();
@@ -279,7 +289,7 @@ function desktop() {
 {
     const d = desktop(); d.start(); const w = new d.Window();
     w.maximize(); d.advance(200);
-    d.pointer(100, 100); d.begin(w); d.pointer(1930, 1);
+    d.pointer(100, 100); d.begin(w); d.pointer(2800, 1);
     d.end(w); d.advance(200); // Drop before the first polling interval.
     equal(w.rect, {x: 1920, y: 30, width: 1920, height: 1050}, 'fast drop survives the restore recursion guard');
     d.pointer(2000, 100); d.begin(w); d.pointer(3839, 500); d.advance(16);
@@ -360,6 +370,56 @@ function desktop() {
     l1.move_resize_frame(true, 0, 1110, 1152, 1050); d.end(l1); d.advance(200);
     equal([l2.rect.x, l2.rect.width], [1152, 768], 'ordinary monitor tiles link too');
     d.finish();
+}
+{
+    const d = desktop(); d.start();
+    equal(d.edgeTiling(), false, 'enable turns off native edge tiling');
+    equal(d.stored['restore-edge-tiling'], true, 'enable remembers to restore edge tiling');
+    equal(d.handlers.size, 4, 'Super+arrow tile shortcuts taken over');
+    const w = new d.Window(), original = w.get_frame_rect();
+    const push = dir => { d.push(dir, w); d.advance(200); };
+    push('up');
+    equal(w.rect, {x: 0, y: 30, width: 1920, height: 1050}, 'Super+Up fills the region');
+    equal(w.nativeMaximizes, 0, 'Super+Up skips native maximize, so no flash');
+    push('down'); equal(w.rect, original, 'Super+Down from full restores');
+    push('left'); equal(w.rect, {x: 0, y: 30, width: 960, height: 1050}, 'Super+Left snaps the left half');
+    push('up'); equal(w.rect, {x: 0, y: 30, width: 960, height: 525}, 'Super+Up makes the top quarter');
+    push('down'); equal(w.rect.height, 1050, 'Super+Down returns to the half');
+    push('right'); equal(w.rect, original, 'Super+Right from the left half restores');
+    push('right'); equal(w.rect.x, 960, 'Super+Right snaps the right half');
+    push('right'); equal(w.rect, {x: 1920, y: 30, width: 960, height: 1050}, 'Super+Right hops into the next region');
+    push('left'); equal(w.rect, {x: 960, y: 30, width: 960, height: 1050}, 'Super+Left hops back to the previous region');
+    const r = new d.Window({x: 2400, y: 150, width: 800, height: 600});
+    d.push('right', r); d.advance(200); d.push('right', r); d.advance(200);
+    equal(r.rect, {x: 2880, y: 30, width: 960, height: 1050}, 'no hop past the last region');
+    const l = new d.Window({x: 100, y: 1200, width: 600, height: 500});
+    d.push('up', l); d.advance(200);
+    equal(l.get_maximized(), 3, 'Super+Up natively maximizes on the laptop');
+    d.push('left', l); d.advance(200);
+    equal([l.rect, l.get_maximized()], [{x: 0, y: 1110, width: 960, height: 1050}, 0],
+        'Super+Left from a native maximize tiles the laptop half');
+    d.push('right', l); d.advance(200);
+    equal(l.rect, {x: 100, y: 1200, width: 600, height: 500}, 'laptop tile restores its pre-maximize size');
+    const m = new d.Window({x: 300, y: 1300, width: 600, height: 500});
+    const drag = (x, y) => { d.pointer(m.rect.x + 10, m.rect.y + 10); d.begin(m); d.advance(); d.pointer(x, y); d.advance(16); d.end(m); d.advance(200); };
+    drag(2, 1500); equal(m.rect, {x: 0, y: 1110, width: 960, height: 1050}, 'laptop edge drag is a VScreen half');
+    equal(d.extension.windows.get(m).state.placement.kind, 'left', 'laptop edge tile is managed');
+    drag(2, 1115); equal(m.rect, {x: 0, y: 1110, width: 960, height: 525}, 'laptop corner drag is a quarter');
+    drag(900, 1081); equal(m.get_maximized(), 3, 'laptop top edge natively maximizes');
+    d.finish();
+    equal(d.edgeTiling(), true, 'disable restores native edge tiling');
+    equal(d.stored['restore-edge-tiling'], false, 'restore flag cleared');
+    equal(d.handlers.size, 0, 'disable releases the tile shortcuts');
+}
+{
+    const d = desktop(); d.setEdgeTiling(false); d.stored['restore-edge-tiling'] = true;
+    d.start(); equal(d.edgeTiling(), false, 'setting held off by a crashed session stays off');
+    d.finish(); equal(d.edgeTiling(), true, 'and is restored on disable');
+}
+{
+    const d = desktop(); d.setEdgeTiling(false);
+    d.start(); d.finish();
+    equal(d.edgeTiling(), false, 'edge tiling the user turned off stays off');
 }
 {
     const d = desktop(); d.wayland();

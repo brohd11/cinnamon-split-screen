@@ -8,6 +8,7 @@ const Core = require('./core');
 
 let metadata;
 let instance = null;
+const PUSH_TILE = ['left', 'right', 'up', 'down'];
 
 class VScreen {
     constructor(meta) {
@@ -25,6 +26,7 @@ class VScreen {
         this.splits = new Map();
         this.preview = null;
         this.previewRect = null;
+        this.muffin = null;
         this.settings = null;
     }
 
@@ -36,6 +38,7 @@ class VScreen {
         for (const [key, property] of [['monitor', 'monitorChoice'], ['layout-32', 'layout32'],
             ['internal-edges', 'internalEdges'], ['dwell-ms', 'dwellMs']])
             this.settings.bind(key, property, () => this._scheduleRefresh());
+        this._takeOverTiling();
 
         this._connect(Main.layoutManager, 'monitors-changed', () => this._scheduleRefresh());
         this._connect(global.display, 'workareas-changed', () => this._scheduleRefresh());
@@ -64,6 +67,36 @@ class VScreen {
             });
         for (const actor of global.get_window_actors()) this._watch(actor.meta_window);
         this._refresh();
+    }
+
+    // VScreen owns tiling while enabled: Muffin keeps no split sizes and its
+    // tiles cannot describe a region, so its edge tiling is switched off and
+    // the Super+arrow tile shortcuts are handled here instead.
+    _takeOverTiling() {
+        const source = Gio.SettingsSchemaSource.get_default();
+        if (source && source.lookup('org.cinnamon.muffin', true)) {
+            this.muffin = new Gio.Settings({schema_id: 'org.cinnamon.muffin'});
+            // The persisted flag covers a crash while edge tiling was held off.
+            if (this.muffin.get_boolean('edge-tiling')) {
+                this.settings.setValue('restore-edge-tiling', true);
+                this.muffin.set_boolean('edge-tiling', false);
+            }
+        }
+        for (const dir of PUSH_TILE)
+            Meta.keybindings_set_custom_handler(`push-tile-${dir}`, (_display, window) => {
+                if (!this.alive) return;
+                try { this._pushTile(window, dir); }
+                catch (error) { global.logError(error, 'VScreen'); }
+            });
+    }
+
+    _releaseTiling() {
+        for (const dir of PUSH_TILE) Meta.keybindings_set_custom_handler(`push-tile-${dir}`, null);
+        if (this.muffin && this.settings && this.settings.getValue('restore-edge-tiling')) {
+            this.muffin.set_boolean('edge-tiling', true);
+            this.settings.setValue('restore-edge-tiling', false);
+        }
+        this.muffin = null;
     }
 
     _connect(object, name, callback, bucket = this.signals) {
@@ -374,6 +407,32 @@ class VScreen {
         this._reflowRegion(p.monitor, p.region, drag.window);
     }
 
+    _pushTile(window, dir) {
+        if (!this._eligible(window) || window.is_fullscreen() || this.topologyPending || this._isDragging(window)) return;
+        this._watch(window);
+        const record = this.windows.get(window);
+        const p = record.state.placement && !record.state.placement.suspended ? record.state.placement : null;
+        const monitor = p ? this.monitors.find(m => m.key === p.monitor) : this._monitorFor(window.get_frame_rect());
+        if (!monitor) return;
+        const nativeFull = !p && window.get_maximized() === Meta.MaximizeFlags.BOTH;
+        const region = p ? p.region : (Core.regionForWindow(monitor.regions, window.get_frame_rect()) || {}).index;
+        if (region === undefined) return;
+        const next = Core.pushTile(p ? p.kind : nativeFull ? 'full' : null, dir, region,
+            monitor.regions.map(r => r.index));
+        if (!next) return;
+        if (next.restore) {
+            if (p) this._restore(window, record.state.release());
+            else this._withGuard(window, () => window.unmaximize(Meta.MaximizeFlags.BOTH));
+        } else if (monitor.plain && next.kind === 'full') {
+            this._withGuard(window, () => { this._clearNativeState(window); window.maximize(Meta.MaximizeFlags.BOTH); });
+        } else {
+            // From a native maximize, keep Muffin's normal rect as the restore size.
+            if (nativeFull) this._withGuard(window, () => window.unmaximize(Meta.MaximizeFlags.BOTH));
+            record.state.assign(Core.copyRect(window.get_frame_rect()), monitor.key, next.region, next.kind);
+            this._queue(window, 'push-tile', () => this._applyPlacement(window));
+        }
+    }
+
     _isDragging(window) { return this.drag && this.drag.window === window; }
 
     _grabBegin(window, op) {
@@ -437,11 +496,10 @@ class VScreen {
             const zone = Core.altZoneFor(monitor.regions, x, y, splitFor);
             return zone ? {...zone, monitor: monitor.key, plain: monitor.plain} : null;
         }
-        if (monitor.plain) { drag.tracker.reset(); return null; } // Native edge tiling.
         const candidate = Core.edgeCandidate(monitor.regions, x, y, this.internalEdges, splitFor);
         if (candidate) candidate.key = `${monitor.key}:${candidate.key}`;
         const ready = drag.tracker.update(candidate, GLib.get_monotonic_time() / 1000, this.dwellMs);
-        return ready ? {...ready, monitor: monitor.key} : null;
+        return ready ? {...ready, monitor: monitor.key, plain: monitor.plain} : null;
     }
 
     _pollDrag() {
@@ -535,6 +593,8 @@ class VScreen {
 
     disable() {
         this._cancelDrag();
+        try { this._releaseTiling(); }
+        catch (error) { global.logError(error, 'VScreen tiling restore'); }
         if (this.cancellable) this.cancellable.cancel();
         this.refreshGeneration++;
         this._disconnect(this.signals);

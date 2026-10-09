@@ -17,11 +17,13 @@ Record Cinnamon/Muffin versions, GPU/driver, session type, glasses model, displa
 1. Drag to each region's top edge: preview and final placement fill that region.
 2. Drag to each outer side: preview and final placement fill half the outer region.
 3. Approach an internal boundary from both sides and pause. Preview the right half of the left region or left half of the right region, respectively. Cross quickly and confirm there is no snap. Disable internal snapping in settings and repeat.
-4. At top corners, expect the whole region; bottom corners follow side snapping, not quarter-screen snapping.
+4. At each corner, and at the top or bottom 25% of a side edge, expect a quarter of the region; along the rest of the top edge, the whole region. Internal corners need the same pause as internal edges.
 5. Move a region-filled window by its title bar and Alt+drag. Verify it releases at the original size and remains controllable under the pointer. Test keyboard moving/resizing too. Press Escape during a move and a resize; expect the pre-grab placement to return.
 6. Release quickly at a top/outer edge and check that native Cinnamon snapping does not override the extension's final rectangle. Check for conflicting previews or persistent overlay actors.
 7. Enter fullscreen using browser F11 and a video player's fullscreen control. Expect the entire glasses display. Exit and expect the prior region/half-region placement.
-8. Repeat regular maximize, side snapping, and fullscreen on the laptop display. VScreen must not change those operations.
+8. On the laptop display, edge drags, corners and Alt-drag tile as one VScreen region; the top edge and maximize button natively maximize; fullscreen is unchanged. No Cinnamon tile preview should appear on any display.
+9. Super+Left/Right/Up/Down: walk each window through halves, quarters, full and restore as documented in the README, including hopping between glasses regions and stopping at the first and last region. Super+Up on the glasses must not flash full screen.
+10. With tiles placed, Super+arrow and edge snaps into a region with a moved divider fill the remaining space.
 
 ## Layout and lifecycle
 
@@ -31,7 +33,7 @@ Record Cinnamon/Muffin versions, GPU/driver, session type, glasses model, displa
 4. Move the physical display in Display Settings, reconnect it through another port, and move an assigned window to the laptop via a desktop shortcut. Check that a later layout refresh does not pull an intentionally moved window back.
 5. Unplug during a drag, while region-filled, and while fullscreen. All windows must remain recoverable on the remaining monitor. Reconnect and verify new maximize/snap actions work.
 6. Suspend/resume with glasses connected and disconnected. Log out/in with glasses already connected. Expect automatic detection without manually launching a process.
-7. Disable and re-enable the extension repeatedly. Check restored normal windows, preserved fullscreen, no stale previews, and no duplicate handling. Verify idle CPU does not show continued pointer polling.
+7. Disable and re-enable the extension repeatedly. `gsettings get org.cinnamon.muffin edge-tiling` must read false while enabled and return to its previous value when disabled. Check restored normal windows, preserved fullscreen, no stale previews, and no duplicate handling. Verify idle CPU does not show continued pointer polling.
 8. Update by rerunning the installer, then disable/re-enable. Uninstall and verify other extensions and VScreen preferences are preserved.
 
 If a check fails, capture the exact action sequence and the VScreen entries from Looking Glass. A passing headless suite is not a substitute for these checks.

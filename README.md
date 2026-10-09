@@ -33,14 +33,19 @@ Installation is per user, under `~/.local/share/cinnamon/extensions/vscreen@broh
 The extension uses the current logical display size, including scaling, and excludes panels from window placement. It does not change resolutions or rearrange physical displays. Split boundaries follow the physical display proportions, even when a panel reserves part of its work area.
 
 - **Maximize button, title-bar double-click, or maximize shortcut:** fill the region containing the window's center. Repeat to restore the original size. Maximizing a half-region window expands it to its whole region.
-- **Drag to a region's top edge:** fill that region. At corners, top-edge behavior wins.
-- **Drag to its left/right edge:** fill the corresponding half of the region. Internal boundaries require a short pause (250 ms by default) within 12 logical pixels. A preview in your theme's tile-preview style shows the pending placement; release to apply it. Crossing without pausing does not snap.
+- **Drag to a region's top edge:** fill that region.
+- **Drag to its left/right edge:** fill the corresponding half of the region, or a quarter in the top or bottom 25% of the edge (so corners give quarters, like Cinnamon's native tiling). Internal boundaries require a short pause (250 ms by default) within 12 logical pixels. A preview in your theme's tile-preview style shows the pending placement; release to apply it. Crossing without pausing does not snap.
 - **Hold Alt while dragging:** snap by position, without reaching an edge. The centre 20% of a region fills it, each side takes that half, and the top or bottom 30% of a side takes that quarter. This works on every display; on non-glasses displays the whole screen is one region, and the centre zone natively maximizes. Alt does nothing unless a window is being dragged.
 - **Resize the shared edge between tiles:** move that region's divider. Neighbouring halves and quarters resize with it, and later snaps into that region fill the remaining space. The divider resets once no half or quarter is left in the region.
 - **Move a placed window, or resize one of its outer edges:** release its region assignment. Moving restores its original size; resizing uses your chosen size. A title-bar click without movement does not release it. Escape cancels a drag.
+- **Super+Left/Right/Up/Down:** tile from the keyboard.
+  - Left/Right snap that half. From the opposite half they restore the window; from a quarter they move it to the other side.
+  - Pressed toward the outside of a region, a half or quarter moves into the neighbouring region, so the glasses' regions behave like separate monitors.
+  - Up turns a half into its top quarter, a bottom quarter back into its half, and a normal window into a full region.
+  - Down turns a half into its bottom quarter, a top quarter back into its half, and a full region back to normal.
 - **Fullscreen:** use the whole physical display. Exiting fullscreen returns to the previous region placement.
 
-Normal laptop and other unselected displays keep Cinnamon's edge tiling and maximize behavior; only Alt-drag tiles are managed there. Non-resizable windows and dialogs are excluded. Applications with minimum sizes wider than a region are restored instead of being repeatedly forced to fit.
+While enabled, VScreen replaces Cinnamon's tiling on every display: it turns off Cinnamon's edge-tiling setting and handles the Super+arrow tile shortcuts itself, and turns the setting back on when disabled or uninstalled. Laptop and other unselected displays are one region each: edge drags, Alt-drag and Super+arrows tile there too, while the top edge, the maximize button and Super+Up from a normal window keep Cinnamon's native maximize. Non-resizable windows and dialogs are excluded. Applications with minimum sizes wider than a region are restored instead of being repeatedly forced to fit.
 
 Region-filled windows are ordinary resized windows internally. Consequently, their maximize icon/menu wording may still say “Maximize”; pressing it again restores the window. Native unmaximize-only shortcuts are not region-restore commands. Other extensions that change maximize or snapping behavior may conflict. Native Cinnamon size animations can briefly show the physical monitor's maximize geometry before region sizing completes.
 

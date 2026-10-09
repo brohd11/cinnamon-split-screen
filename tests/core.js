@@ -29,7 +29,14 @@ equal(C.regionAt(dual, 3740, -1000), null, 'right bound exclusive');
 equal(C.targetRect(dual[1], 'left'), {x: 1820, y: -1050, width: 960, height: 1050}, 'left half of region');
 equal(C.targetRect({area: {x: 0, y: 0, width: 641, height: 1080}}, 'right'),
     {x: 320, y: 0, width: 321, height: 1080}, 'half remainder');
-equal(C.edgeCandidate(dual, 1819, -1075).kind, 'full', 'top wins over inner side');
+equal(C.edgeCandidate(dual, 1819, -1075).kind, 'top-right', 'corner is a quarter');
+equal(C.edgeCandidate(dual, 900, -1075).kind, 'full', 'top edge away from sides fills region');
+equal(C.edgeCandidate(dual, -100, -800).kind, 'top-left', 'side edge top 25% is a quarter');
+equal(C.edgeCandidate(dual, -100, -780).kind, 'left', 'side edge middle is a half');
+equal(C.edgeCandidate(dual, -100, -262).kind, 'bottom-left', 'side edge bottom 25% is a quarter');
+equal(C.edgeCandidate(dual, 1819, -1000).internal, true, 'internal corner needs dwell');
+equal(C.edgeCandidate(dual, 1819, -1000, false), null, 'internal corner off with internal edges');
+equal(C.edgeCandidate(dual, -100, -1000).rect, {x: -100, y: -1050, width: 960, height: 525}, 'edge quarter rect');
 equal(C.edgeCandidate(dual, 1819, -500).kind, 'right', 'approach inner boundary from left');
 equal(C.edgeCandidate(dual, 1820, -500).kind, 'left', 'approach inner boundary from right');
 equal(C.edgeCandidate(dual, 1819, -500, false), null, 'internal edges disabled');
@@ -63,6 +70,28 @@ equal(C.resizeSplit(dual[0], 'left', {x: true, side: null}, {x: -100, y: -1050, 
     0.8, 'divider follows the resized edge');
 equal(C.resizeSplit(dual[0], 'left', {x: true, side: null}, {x: -100, y: -1050, width: 10, height: 1050}).x,
     0.1, 'divider is clamped');
+const push = (kind, dir, region = 0, regions = [0, 1]) => C.pushTile(kind, dir, region, regions);
+equal([push(null, 'left'), push('full', 'left')], [{kind: 'left', region: 0}, {kind: 'left', region: 0}],
+    'Super+Left snaps a normal or full window left');
+equal(push('right', 'left'), {restore: true}, 'Super+Left from the right half restores');
+equal([push('top-right', 'left'), push('bottom-right', 'left')],
+    [{kind: 'top-left', region: 0}, {kind: 'bottom-left', region: 0}], 'right quarters cross to the left');
+equal(push('left', 'left', 1), {kind: 'right', region: 0}, 'left half hops to previous region');
+equal(push('top-left', 'left', 1), {kind: 'top-right', region: 0}, 'left quarter hops to previous region');
+equal(push('left', 'left', 0), null, 'no hop past the first region');
+equal(push('right', 'right', 0), {kind: 'left', region: 1}, 'right half hops to next region');
+equal(push('right', 'right', 1), null, 'no hop past the last region');
+equal(push('left', 'right'), {restore: true}, 'Super+Right from the left half restores');
+equal(push('left', 'right', 0, [0]), {restore: true}, 'single region still restores');
+equal([push('left', 'up'), push('right', 'up')], [{kind: 'top-left', region: 0}, {kind: 'top-right', region: 0}],
+    'Super+Up turns a half into its top quarter');
+equal(push('bottom-left', 'up'), {kind: 'left', region: 0}, 'Super+Up from bottom quarter is the half');
+equal(push(null, 'up'), {kind: 'full', region: 0}, 'Super+Up fills the region');
+equal([push('full', 'up'), push('top-left', 'up')], [null, null], 'Super+Up at top does nothing');
+equal(push('full', 'down'), {restore: true}, 'Super+Down from full restores');
+equal(push('right', 'down'), {kind: 'bottom-right', region: 0}, 'Super+Down turns a half into its bottom quarter');
+equal(push('top-right', 'down'), {kind: 'right', region: 0}, 'Super+Down from top quarter is the half');
+equal([push(null, 'down'), push('bottom-left', 'down')], [null, null], 'Super+Down at bottom does nothing');
 const tracker = new C.EdgeTracker();
 const edge = C.edgeCandidate(dual, 1819, -500);
 equal(tracker.update(edge, 0, 250), null, 'start dwell');
