@@ -10,7 +10,8 @@ import shutil
 import subprocess
 import tempfile
 
-UUID = "vscreen@brohd"
+UUID = "split-screen@brohd11"
+NAME = "Split Screen"
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "extension" / UUID
 FILES = ("core.js", "extension.js", "metadata.json", "settings-schema.json")
@@ -41,7 +42,7 @@ def validate_destination(destination):
     if destination.exists():
         metadata = destination / "metadata.json"
         if not metadata.is_file() or json.loads(metadata.read_text()).get("uuid") != UUID:
-            raise RuntimeError(f"Directory is not an installed VScreen extension: {destination}")
+            raise RuntimeError(f"Directory is not an installed {NAME} extension: {destination}")
 
 
 def install(destination):
@@ -49,24 +50,25 @@ def install(destination):
     destination.mkdir(parents=True, exist_ok=True)
     # Replace individual known files, preserving any unrelated local files.
     # Stage everything before replacing, with metadata last.
-    with tempfile.TemporaryDirectory(prefix=".vscreen-", dir=destination.parent) as staging:
+    with tempfile.TemporaryDirectory(prefix=".split-screen-", dir=destination.parent) as staging:
         staging = Path(staging)
         for filename in FILES:
             shutil.copyfile(SOURCE / filename, staging / filename)
             (staging / filename).chmod(0o644)
         for filename in sorted(FILES, key=lambda name: name == "metadata.json"):
             os.replace(staging / filename, destination / filename)
-    print(f"Installed VScreen to {destination}")
-    print("Open System Settings → Extensions and enable VScreen.")
-    print("Enabled extensions load at login. Disable/re-enable VScreen after an update.")
+    print(f"Installed {NAME} to {destination}")
+    print(f"Open System Settings → Extensions and enable {NAME}.")
+    print(f"Enabled extensions load at login. Disable/re-enable {NAME} after an update.")
 
 
 def uninstall(destination, manage_activation):
     if not destination.exists() and not destination.is_symlink():
-        print("VScreen is not installed.")
+        print(f"{NAME} is not installed.")
         return
     validate_destination(destination)
     if manage_activation:
+        # Disabling lets the running extension restore Cinnamon's edge tiling.
         disable_if_enabled()
     for filename in FILES:
         (destination / filename).unlink(missing_ok=True)
@@ -74,7 +76,7 @@ def uninstall(destination, manage_activation):
         destination.rmdir()
     except OSError:
         print(f"Preserved other files in {destination}")
-    print("Uninstalled VScreen. Saved Cinnamon extension preferences were preserved.")
+    print(f"Uninstalled {NAME}. Saved Cinnamon extension preferences were preserved.")
 
 
 def main():

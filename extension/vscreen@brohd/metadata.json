@@ -1,9 +1,0 @@
-{
-    "uuid": "vscreen@brohd",
-    "name": "VScreen",
-    "description": "Maximize and snap windows into regions on XREAL ultrawide glasses. Fullscreen still uses the whole display.",
-    "cinnamon-version": ["6.6"],
-    "version": "0.1.0",
-    "url": "",
-    "max-instances": 1
-}

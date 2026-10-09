@@ -10,7 +10,7 @@ let metadata;
 let instance = null;
 const PUSH_TILE = ['left', 'right', 'up', 'down'];
 
-class VScreen {
+class SplitScreen {
     constructor(meta) {
         this.meta = meta;
         this.alive = false;
@@ -32,7 +32,7 @@ class VScreen {
 
     enable() {
         if (Meta.is_wayland_compositor())
-            throw new Error('VScreen 0.1 supports Cinnamon X11 sessions. Wayland has not been validated.');
+            throw new Error('Split Screen supports Cinnamon X11 sessions. Wayland has not been validated.');
         this.alive = true;
         this.settings = new Settings.ExtensionSettings(this, this.meta.uuid);
         for (const [key, property] of [['monitor', 'monitorChoice'], ['layout-32', 'layout32'],
@@ -69,7 +69,7 @@ class VScreen {
         this._refresh();
     }
 
-    // VScreen owns tiling while enabled: Muffin keeps no split sizes and its
+    // Split Screen owns tiling while enabled: Muffin keeps no split sizes and its
     // tiles cannot describe a region, so its edge tiling is switched off and
     // the Super+arrow tile shortcuts are handled here instead.
     _takeOverTiling() {
@@ -86,7 +86,7 @@ class VScreen {
             Meta.keybindings_set_custom_handler(`push-tile-${dir}`, (_display, window) => {
                 if (!this.alive) return;
                 try { this._pushTile(window, dir); }
-                catch (error) { global.logError(error, 'VScreen'); }
+                catch (error) { global.logError(error, 'Split Screen'); }
             });
     }
 
@@ -103,7 +103,7 @@ class VScreen {
         const id = object.connect(name, (...args) => {
             if (!this.alive) return undefined;
             try { return callback(...args); }
-            catch (error) { global.logError(error, 'VScreen'); return undefined; }
+            catch (error) { global.logError(error, 'Split Screen'); return undefined; }
         });
         bucket.push([object, id]);
     }
@@ -118,7 +118,7 @@ class VScreen {
         const run = () => {
             this.sources.delete(id);
             if (this.alive) {
-                try { callback(); } catch (error) { global.logError(error, 'VScreen'); }
+                try { callback(); } catch (error) { global.logError(error, 'Split Screen'); }
             }
             return GLib.SOURCE_REMOVE;
         };
@@ -149,9 +149,9 @@ class VScreen {
                 if (!this.alive || generation !== this.refreshGeneration) return;
                 let physical = [];
                 try { physical = connection.call_finish(result).deep_unpack()[1]; }
-                catch (error) { global.log(`VScreen: display identity unavailable; using monitor names (${error.message})`); }
+                catch (error) { global.log(`Split Screen: display identity unavailable; using monitor names (${error.message})`); }
                 try { this._updateMonitors(physical); }
-                catch (error) { global.logError(error, 'VScreen display update'); }
+                catch (error) { global.logError(error, 'Split Screen display update'); }
             });
     }
 
@@ -354,7 +354,7 @@ class VScreen {
             if (actual.width > rect.width + 4 || actual.height > rect.height + 4) {
                 const original = record.state.release();
                 this._restore(window, original);
-                global.log('VScreen: window minimum size exceeds its region; restored the window.');
+                global.log('Split Screen: window minimum size exceeds its region; restored the window.');
             }
         }, 150);
     }
@@ -594,7 +594,7 @@ class VScreen {
     disable() {
         this._cancelDrag();
         try { this._releaseTiling(); }
-        catch (error) { global.logError(error, 'VScreen tiling restore'); }
+        catch (error) { global.logError(error, 'Split Screen tiling restore'); }
         if (this.cancellable) this.cancellable.cancel();
         this.refreshGeneration++;
         this._disconnect(this.signals);
@@ -603,7 +603,7 @@ class VScreen {
         for (const [window, record] of this.windows) {
             this._disconnect(record.signals);
             try { this._restore(window, record.state.release()); }
-            catch (error) { global.logError(error, 'VScreen restore'); }
+            catch (error) { global.logError(error, 'Split Screen restore'); }
         }
         this.alive = false;
         for (const id of Array.from(this.sources)) this._cancel(id);
@@ -622,7 +622,7 @@ function init(meta) { metadata = meta; }
 
 function enable() {
     if (instance) return;
-    instance = new VScreen(metadata);
+    instance = new SplitScreen(metadata);
     try { instance.enable(); }
     catch (error) { instance.disable(); instance = null; throw error; }
 }

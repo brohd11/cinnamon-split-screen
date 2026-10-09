@@ -10,13 +10,13 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-UUID = "vscreen@brohd"
+UUID = "split-screen@brohd11"
 EXTENSION = ROOT / "extension" / UUID
 
 
 class PackagingTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="vscreen-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="split-screen-test-")
         self.addCleanup(self.temporary.cleanup)
         self.parent = Path(self.temporary.name) / "extensions with spaces"
         self.destination = self.parent / UUID

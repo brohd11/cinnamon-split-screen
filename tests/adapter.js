@@ -152,8 +152,8 @@ function desktop() {
             ease({duration, mode, onComplete, ...props}) { this.eased = (this.eased || 0) + 1; Object.assign(this, props); if (onComplete) onComplete(); }}}},
         ui: {main: Main, settings: {ExtensionSettings: FakeSettings}},
         mainloop: {idle_add: fn => schedule(fn), timeout_add: (ms, fn) => schedule(fn, ms), source_remove: id => tasks.delete(id)}};
-    const Constructor = new Function('imports', 'global', 'require', `${source}\nreturn VScreen;`)(mocks, globalMock, () => Core);
-    const extension = new Constructor({uuid: 'vscreen@brohd'});
+    const Constructor = new Function('imports', 'global', 'require', `${source}\nreturn SplitScreen;`)(mocks, globalMock, () => Core);
+    const extension = new Constructor({uuid: 'split-screen@brohd11'});
     function begin(window, op = Meta.GrabOp.MOVING) { display.emit('grab-op-begin', display, window, op); }
     function end(window) { display.emit('grab-op-end', display, window, Meta.GrabOp.MOVING); advance(); }
     return {extension, Window, advance, begin, end, Meta, display, wm, stage, layoutManager,
@@ -402,7 +402,7 @@ function desktop() {
     equal(l.rect, {x: 100, y: 1200, width: 600, height: 500}, 'laptop tile restores its pre-maximize size');
     const m = new d.Window({x: 300, y: 1300, width: 600, height: 500});
     const drag = (x, y) => { d.pointer(m.rect.x + 10, m.rect.y + 10); d.begin(m); d.advance(); d.pointer(x, y); d.advance(16); d.end(m); d.advance(200); };
-    drag(2, 1500); equal(m.rect, {x: 0, y: 1110, width: 960, height: 1050}, 'laptop edge drag is a VScreen half');
+    drag(2, 1500); equal(m.rect, {x: 0, y: 1110, width: 960, height: 1050}, 'laptop edge drag is a managed half');
     equal(d.extension.windows.get(m).state.placement.kind, 'left', 'laptop edge tile is managed');
     drag(2, 1115); equal(m.rect, {x: 0, y: 1110, width: 960, height: 525}, 'laptop corner drag is a quarter');
     drag(900, 1081); equal(m.get_maximized(), 3, 'laptop top edge natively maximizes');

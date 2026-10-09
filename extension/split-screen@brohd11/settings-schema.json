@@ -1,12 +1,12 @@
 {
     "intro": {
         "type": "label",
-        "description": "VScreen divides an ultrawide display into window regions. Enable the extension once to start automatically at login. App fullscreen still spans the whole display."
+        "description": "Split Screen tiles windows on every display: snap them to halves and quarters, and drag the shared edge between tiles to resize them together. The selected ultrawide display is also split into separate screens. Enable the extension once to start automatically at login. App fullscreen still spans the whole display."
     },
     "monitor": {
         "type": "combobox",
         "default": "auto",
-        "description": "Display",
+        "description": "Split into virtual screens",
         "options": {"Automatically detect XREAL": "auto"},
         "tooltip": "Connected displays appear while the extension is enabled. Automatic detection activates all displays identified as XREAL."
     },
