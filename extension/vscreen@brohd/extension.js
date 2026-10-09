@@ -22,7 +22,9 @@ class VScreen {
         this.refreshGeneration = 0;
         this.topologyPending = true;
         this.cancellable = null;
+        this.splits = new Map();
         this.preview = null;
+        this.previewRect = null;
         this.settings = null;
     }
 
@@ -45,7 +47,8 @@ class VScreen {
         this._connect(global.window_manager, 'size-change', (_wm, actor, kind, oldRect) =>
             this._sizeChange(actor.meta_window, kind, oldRect));
         this._connect(global.window_manager, 'show-tile-preview', () => {
-            if (this.drag && (this.drag.target || this._monitorAt(...global.get_pointer()))) Main.wm._hideTilePreview();
+            const monitor = this._monitorAt(...global.get_pointer());
+            if (this.drag && (this.drag.target || (monitor && !monitor.plain))) Main.wm._hideTilePreview();
         });
         this._connect(global.stage, 'captured-event', (_stage, event) => {
             if (this.drag && event.type() === Clutter.EventType.KEY_PRESS &&
@@ -142,9 +145,11 @@ class VScreen {
             options[`${identity.name} (${identity.connector || index + 1})`] = identity.key;
             const matches = this.monitorChoice === 'auto' ? /xreal/i.test(`${name} ${identity.identification}`) :
                 this.monitorChoice === identity.key;
-            if (!matches) continue;
-            const regions = Core.regionsFor(bounds, area, this.layout32);
-            if (regions.length) selected.push({key: identity.key, index, bounds, area, regions});
+            // Other monitors are one plain region: Alt-drag tiles link there,
+            // while edge drags and maximize stay native Cinnamon behaviour.
+            const regions = matches ? Core.regionsFor(bounds, area, this.layout32) : [];
+            selected.push(regions.length ? {key: identity.key, index, bounds, area, regions, plain: false} :
+                {key: identity.key, index, bounds, area, regions: [{index: 0, bounds, area}], plain: true});
         }
         if (!Object.values(options).includes(this.monitorChoice))
             options['Previously selected display (disconnected)'] = this.monitorChoice;
@@ -152,6 +157,11 @@ class VScreen {
             this.settings.setOptions('monitor', options);
         this.monitors = selected;
         this.topologyPending = false;
+        for (const key of Array.from(this.splits.keys())) {
+            const [monitorKey, region] = this._splitKeyParts(key);
+            const monitor = selected.find(m => m.key === monitorKey);
+            if (!monitor || !monitor.regions.some(r => r.index === region)) this.splits.delete(key);
+        }
         for (const [window, record] of this.windows) {
             const p = record.state.placement;
             if (!p) continue;
@@ -250,6 +260,12 @@ class VScreen {
         const original = Core.copyRect(oldRect);
         const monitor = this._monitorFor(original);
         if (!monitor) return;
+        if (monitor.plain) {
+            // Native maximize; its native restore returns to the tile rect.
+            const record = this.windows.get(window);
+            if (record) record.state.release();
+            return;
+        }
         const region = Core.regionForWindow(monitor.regions, original);
         if (!region) return;
         const generation = this.refreshGeneration;
@@ -294,7 +310,7 @@ class VScreen {
         const monitor = this.monitors.find(m => m.key === p.monitor);
         const region = monitor && monitor.regions.find(r => r.index === p.region);
         if (!region) return;
-        const rect = Core.targetRect(region, p.kind);
+        const rect = Core.targetRect(region, p.kind, this._split(p.monitor, p.region));
         this._withGuard(window, () => { this._clearNativeState(window); this._move(window, rect); });
         const revision = record.revision;
         // One check, no resize loop: terminals and other apps can enforce size hints.
@@ -319,6 +335,45 @@ class VScreen {
         });
     }
 
+    _splitKey(monitor, region) { return JSON.stringify([monitor, region]); }
+
+    _splitKeyParts(key) { return JSON.parse(key); }
+
+    _regionWindows(monitor, region, except = null) {
+        return Array.from(this.windows).filter(([window, record]) => {
+            const p = record.state.placement;
+            return window !== except && p && !p.suspended && p.monitor === monitor &&
+                p.region === region && p.kind !== 'full';
+        }).map(([window]) => window);
+    }
+
+    // A region's dividers persist while a half or quarter is placed in it.
+    _split(monitor, region) {
+        const key = this._splitKey(monitor, region);
+        if (!this._regionWindows(monitor, region).length) this.splits.delete(key);
+        return this.splits.get(key);
+    }
+
+    _reflowRegion(monitor, region, except = null) {
+        for (const window of this._regionWindows(monitor, region, except))
+            this._queue(window, 'reflow', () => this._applyPlacement(window));
+    }
+
+    _trackDivider() {
+        const drag = this.drag, record = this.windows.get(drag.window);
+        const p = record && record.state.placement;
+        const monitor = p && this.monitors.find(m => m.key === p.monitor);
+        const region = monitor && monitor.regions.find(r => r.index === p.region);
+        if (!region) return;
+        const frame = drag.window.get_frame_rect();
+        if (frame.width === drag.initialRect.width && frame.height === drag.initialRect.height &&
+            frame.x === drag.initialRect.x && frame.y === drag.initialRect.y) return;
+        drag.moved = true;
+        this.splits.set(this._splitKey(p.monitor, p.region),
+            Core.resizeSplit(region, p.kind, drag.divider, frame, this._split(p.monitor, p.region)));
+        this._reflowRegion(p.monitor, p.region, drag.window);
+    }
+
     _isDragging(window) { return this.drag && this.drag.window === window; }
 
     _grabBegin(window, op) {
@@ -326,8 +381,12 @@ class VScreen {
         this._watch(window);
         const record = this.windows.get(window);
         const moving = op === Meta.GrabOp.MOVING || op === Meta.GrabOp.KEYBOARD_MOVING;
-        const resizing = Object.keys(Meta.GrabOp).some(k => k.includes('RESIZING') && Meta.GrabOp[k] === op);
-        if (!moving && !resizing) return; // Ignore titlebar-button grabs.
+        const resizeName = Object.keys(Meta.GrabOp).find(k => k.includes('RESIZING') && Meta.GrabOp[k] === op);
+        if (!moving && !resizeName) return; // Ignore titlebar-button grabs.
+        const direction = resizeName ? resizeName.replace(/^.*RESIZING_/, '') : '';
+        const edges = /^[NSEW]+$/.test(direction) ? direction.toLowerCase().split('') : [];
+        const p = record.state.placement;
+        const divider = !moving && p && !p.suspended ? Core.dividerFor(p.kind, edges) : null;
         this._cancelDrag();
         this._cancel(record.pending);
         record.pending = 0;
@@ -337,12 +396,14 @@ class VScreen {
         const [x, y] = global.get_pointer();
         this.drag = {window, moving, initialRect, initialPlacement, original: original || initialRect,
             initialPointer: [x, y], keyboard: op === Meta.GrabOp.KEYBOARD_MOVING, moved: false,
-            tracker: new Core.EdgeTracker(), target: null, poll: 0, cancelled: false};
+            tracker: new Core.EdgeTracker(), target: null, poll: 0, cancelled: false, divider,
+            initialSplit: p ? this._split(p.monitor, p.region) : undefined};
         if (moving) this._pollDrag();
     }
 
     _trackDragMotion() {
         const drag = this.drag;
+        if (drag && drag.divider && !drag.cancelled) { this._trackDivider(); return; }
         if (!drag || drag.moved || drag.cancelled) return;
         const record = this.windows.get(drag.window);
         const frame = drag.window.get_frame_rect();
@@ -368,25 +429,16 @@ class VScreen {
         if (!drag || !drag.moving || drag.keyboard || drag.cancelled || !drag.moved) return null;
         const [x, y, mask] = global.get_pointer();
         const monitor = this._monitorAt(x, y);
+        if (!monitor) return null;
+        const splitFor = region => this._split(monitor.key, region);
         // Alt while dragging: position-based zones, no edge or dwell needed.
-        // Other monitors are treated as a single region and are not managed.
         if (mask & Clutter.ModifierType.MOD1_MASK) {
             drag.tracker.reset();
-            if (monitor) {
-                const zone = Core.altZoneFor(monitor.regions, x, y);
-                return zone ? {...zone, monitor: monitor.key, vsMonitor: monitor} : null;
-            }
-            const workspace = global.workspace_manager.get_active_workspace();
-            for (let i = 0; i < global.display.get_n_monitors(); i++) {
-                const bounds = Core.copyRect(global.display.get_monitor_geometry(i));
-                if (!Core.contains(bounds, x, y)) continue;
-                const area = Core.copyRect(workspace.get_work_area_for_monitor(i));
-                const zone = Core.altZoneFor([{index: 0, bounds, area}], x, y);
-                return zone ? {...zone, monitor: `monitor:${i}`, vsMonitor: null} : null;
-            }
-            return null;
+            const zone = Core.altZoneFor(monitor.regions, x, y, splitFor);
+            return zone ? {...zone, monitor: monitor.key, plain: monitor.plain} : null;
         }
-        const candidate = monitor ? Core.edgeCandidate(monitor.regions, x, y, this.internalEdges) : null;
+        if (monitor.plain) { drag.tracker.reset(); return null; } // Native edge tiling.
+        const candidate = Core.edgeCandidate(monitor.regions, x, y, this.internalEdges, splitFor);
         if (candidate) candidate.key = `${monitor.key}:${candidate.key}`;
         const ready = drag.tracker.update(candidate, GLib.get_monotonic_time() / 1000, this.dwellMs);
         return ready ? {...ready, monitor: monitor.key} : null;
@@ -418,19 +470,21 @@ class VScreen {
             if (generation !== this.refreshGeneration || window.is_fullscreen()) return;
             if (drag.cancelled) {
                 record.state.placement = drag.initialPlacement;
+                if (drag.divider) {
+                    const p = drag.initialPlacement, key = this._splitKey(p.monitor, p.region);
+                    if (drag.initialSplit) this.splits.set(key, drag.initialSplit);
+                    else this.splits.delete(key);
+                    this._reflowRegion(p.monitor, p.region, window);
+                }
                 if (drag.initialPlacement) this._applyPlacement(window);
                 else this._restore(window, drag.initialRect);
+            } else if (drag.divider) {
+                this._applyPlacement(window); // Settle exactly on the new divider.
+            } else if (target && target.plain && target.kind === 'full') {
+                this._withGuard(window, () => { this._clearNativeState(window); window.maximize(Meta.MaximizeFlags.BOTH); });
             } else if (target) {
-                if (target.vsMonitor === null) {
-                    this._withGuard(window, () => {
-                        this._clearNativeState(window);
-                        this._move(window, target.rect);
-                        if (target.kind === 'full') window.maximize(Meta.MaximizeFlags.BOTH);
-                    });
-                } else {
-                    record.state.assign(drag.original, target.monitor, target.region, target.kind);
-                    this._applyPlacement(window);
-                }
+                record.state.assign(drag.original, target.monitor, target.region, target.kind);
+                this._applyPlacement(window);
             }
         });
     }
@@ -441,17 +495,43 @@ class VScreen {
         this._hidePreview();
     }
 
+    _previewTime() {
+        if (!Main.animations_enabled) return 0;
+        return (Main.wm.TILE_PREVIEW_ANIMATION_TIME || 150) * (Main.wm.window_effect_multiplier || 1);
+    }
+
+    // Like Cinnamon's own tile preview: grow out of the window, slide between
+    // targets and fade out.
     _showPreview(rect) {
         if (!this.preview) {
             this.preview = new St.Widget({reactive: false, can_focus: false, style_class: 'tile-preview'});
             Main.uiGroup.add_child(this.preview);
         }
-        this.preview.set_position(rect.x, rect.y);
-        this.preview.set_size(rect.width, rect.height);
-        this.preview.show();
+        const preview = this.preview, time = this._previewTime();
+        if (this.previewRect && Core.sameRect(this.previewRect, rect)) return;
+        preview.remove_all_transitions();
+        if (!this.previewRect) {
+            const from = this.drag ? this.drag.window.get_frame_rect() : rect;
+            preview.set_position(from.x, from.y);
+            preview.set_size(from.width, from.height);
+            preview.opacity = 0;
+            preview.show();
+        }
+        this.previewRect = Core.copyRect(rect);
+        const props = {x: rect.x, y: rect.y, width: rect.width, height: rect.height, opacity: 255};
+        if (time) preview.ease({...props, duration: time, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+        else Object.assign(preview, props);
     }
 
-    _hidePreview() { if (this.preview) this.preview.hide(); }
+    _hidePreview() {
+        if (!this.preview || !this.previewRect) return;
+        const preview = this.preview, time = this._previewTime();
+        this.previewRect = null;
+        preview.remove_all_transitions();
+        if (time) preview.ease({opacity: 0, duration: time, mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => preview.hide()});
+        else preview.hide();
+    }
 
     disable() {
         this._cancelDrag();
@@ -471,6 +551,8 @@ class VScreen {
         this.monitors = [];
         if (this.preview) this.preview.destroy();
         this.preview = null;
+        this.previewRect = null;
+        this.splits.clear();
         if (this.settings) this.settings.finalize();
         this.settings = null;
     }

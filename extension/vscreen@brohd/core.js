@@ -64,22 +64,47 @@ function regionForWindow(regions, frame) {
     }, {area: 0, region: null}).region;
 }
 
-function targetRect(region, kind) {
+// A region's dividers: x splits left from right, and each side has its own
+// height split for quarters. Fractions of the region's work area.
+var DEFAULT_SPLIT = {x: 0.5, left: 0.5, right: 0.5};
+
+function sideOf(kind) { return kind.endsWith('left') ? 'left' : 'right'; }
+
+function targetRect(region, kind, split = DEFAULT_SPLIT) {
     const r = copyRect(region.area);
-    const left = Math.floor(r.width / 2);
-    const top = Math.floor(r.height / 2);
-    if (kind === 'left') { r.width = left; }
-    else if (kind === 'right') { r.x += left; r.width -= left; }
-    else if (kind === 'top-left') { r.width = left; r.height = top; }
-    else if (kind === 'top-right') { r.x += left; r.width -= left; r.height = top; }
-    else if (kind === 'bottom-left') { r.width = left; r.y += top; r.height -= top; }
-    else if (kind === 'bottom-right') { r.x += left; r.width -= left; r.y += top; r.height -= top; }
+    if (kind === 'full') return r;
+    const side = sideOf(kind), left = Math.floor(r.width * split.x);
+    if (side === 'left') r.width = left;
+    else { r.x += left; r.width -= left; }
+    const top = Math.floor(r.height * split[side]);
+    if (kind.startsWith('top-')) r.height = top;
+    else if (kind.startsWith('bottom-')) { r.y += top; r.height -= top; }
     return r;
+}
+
+// Which dividers a resize grab on these edges ('n', 's', 'e', 'w') moves, or
+// null when the grab includes an outer edge of the window's slot.
+function dividerFor(kind, edges) {
+    if (kind === 'full' || !edges.length) return null;
+    const side = sideOf(kind), vertical = side === 'left' ? 'e' : 'w';
+    const horizontal = kind.startsWith('top-') ? 's' : kind.startsWith('bottom-') ? 'n' : null;
+    if (!edges.every(e => e === vertical || e === horizontal)) return null;
+    return {x: edges.includes(vertical), side: edges.includes(horizontal) ? side : null};
+}
+
+function resizeSplit(region, kind, divider, frame, split = DEFAULT_SPLIT) {
+    const a = region.area, clamp = f => Math.max(0.1, Math.min(0.9, f));
+    const next = {...split}, side = sideOf(kind);
+    if (divider.x)
+        next.x = clamp(((side === 'left' ? frame.x + frame.width : frame.x) - a.x) / a.width);
+    if (divider.side)
+        next[side] = clamp(((kind.startsWith('top-') ? frame.y + frame.height : frame.y) - a.y) / a.height);
+    return next;
 }
 
 // Alt-drag zones cover the whole region: the centre 20% column fills it, each
 // side takes the matching half, and the top/bottom 30% of a side is a quarter.
-function altZoneFor(regions, x, y) {
+function altZoneFor(regions, x, y, splitFor = () => undefined) {
     const region = regionAt(regions, x, y);
     if (!region) return null;
     const r = region.area;
@@ -92,10 +117,11 @@ function altZoneFor(regions, x, y) {
         else if (yFrac >= 0.70) kind = `bottom-${side}`;
         else kind = side;
     }
-    return {key: `${region.index}:${kind}`, region: region.index, kind, rect: targetRect(region, kind)};
+    return {key: `${region.index}:${kind}`, region: region.index, kind,
+        rect: targetRect(region, kind, splitFor(region.index))};
 }
 
-function edgeCandidate(regions, x, y, internalEdges = true, band = 12) {
+function edgeCandidate(regions, x, y, internalEdges = true, splitFor = () => undefined, band = 12) {
     const region = regionAt(regions, x, y);
     if (!region) return null;
     let kind, internal = false;
@@ -110,7 +136,7 @@ function edgeCandidate(regions, x, y, internalEdges = true, band = 12) {
     } else return null;
     if (internal && !internalEdges) return null;
     return {key: `${region.index}:${kind}`, region: region.index, kind, internal,
-        rect: targetRect(region, kind)};
+        rect: targetRect(region, kind, splitFor(region.index))};
 }
 
 var EdgeTracker = class EdgeTracker {

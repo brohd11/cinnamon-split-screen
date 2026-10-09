@@ -34,11 +34,13 @@ The extension uses the current logical display size, including scaling, and excl
 
 - **Maximize button, title-bar double-click, or maximize shortcut:** fill the region containing the window's center. Repeat to restore the original size. Maximizing a half-region window expands it to its whole region.
 - **Drag to a region's top edge:** fill that region. At corners, top-edge behavior wins.
-- **Drag to its left/right edge:** fill the corresponding half of the region. Internal boundaries require a short pause (250 ms by default) within 12 logical pixels. A blue preview shows the pending placement; release to apply it. Crossing without pausing does not snap.
-- **Move or resize a placed window:** release its region assignment. Moving restores its original size; resizing uses your chosen size. A title-bar click without movement does not release it. Escape cancels a drag.
+- **Drag to its left/right edge:** fill the corresponding half of the region. Internal boundaries require a short pause (250 ms by default) within 12 logical pixels. A preview in your theme's tile-preview style shows the pending placement; release to apply it. Crossing without pausing does not snap.
+- **Hold Alt while dragging:** snap by position, without reaching an edge. The centre 20% of a region fills it, each side takes that half, and the top or bottom 30% of a side takes that quarter. This works on every display; on non-glasses displays the whole screen is one region, and the centre zone natively maximizes. Alt does nothing unless a window is being dragged.
+- **Resize the shared edge between tiles:** move that region's divider. Neighbouring halves and quarters resize with it, and later snaps into that region fill the remaining space. The divider resets once no half or quarter is left in the region.
+- **Move a placed window, or resize one of its outer edges:** release its region assignment. Moving restores its original size; resizing uses your chosen size. A title-bar click without movement does not release it. Escape cancels a drag.
 - **Fullscreen:** use the whole physical display. Exiting fullscreen returns to the previous region placement.
 
-Normal laptop and other unselected displays keep Cinnamon's behavior. Non-resizable windows and dialogs are excluded. Applications with minimum sizes wider than a region are restored instead of being repeatedly forced to fit.
+Normal laptop and other unselected displays keep Cinnamon's edge tiling and maximize behavior; only Alt-drag tiles are managed there. Non-resizable windows and dialogs are excluded. Applications with minimum sizes wider than a region are restored instead of being repeatedly forced to fit.
 
 Region-filled windows are ordinary resized windows internally. Consequently, their maximize icon/menu wording may still say “Maximize”; pressing it again restores the window. Native unmaximize-only shortcuts are not region-restore commands. Other extensions that change maximize or snapping behavior may conflict. Native Cinnamon size animations can briefly show the physical monitor's maximize geometry before region sizing completes.
 

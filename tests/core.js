@@ -48,6 +48,21 @@ equal(C.altZoneFor(dual, 2000, -500).region, 1, 'alt zones are per region');
 equal(C.altZoneFor(dual, 3740, -500), null, 'alt outside regions');
 equal(C.targetRect({area: {x: 0, y: 0, width: 641, height: 1081}}, 'bottom-right'),
     {x: 320, y: 540, width: 321, height: 541}, 'quarter remainder');
+const split = {x: 0.7, left: 0.5, right: 0.25};
+equal(C.targetRect(dual[0], 'left', split).width, 1344, 'left uses vertical divider');
+equal(C.targetRect(dual[0], 'right', split), {x: 1244, y: -1050, width: 576, height: 1050}, 'right fills the rest');
+equal(C.targetRect(dual[0], 'top-right', split).height, 262, 'quarter uses its side height divider');
+equal(C.targetRect(dual[0], 'full', split), dual[0].area, 'full ignores dividers');
+equal(C.dividerFor('left', ['e']), {x: true, side: null}, 'left tile east edge is the divider');
+equal(C.dividerFor('left', ['w']), null, 'outer edge is not a divider');
+equal(C.dividerFor('top-right', ['s', 'w']), {x: true, side: 'right'}, 'quarter corner moves both dividers');
+equal(C.dividerFor('top-right', ['n', 'w']), null, 'mixed outer edge releases');
+equal(C.dividerFor('full', ['e']), null, 'full has no divider');
+equal(C.dividerFor('right', []), null, 'unknown keyboard resize');
+equal(C.resizeSplit(dual[0], 'left', {x: true, side: null}, {x: -100, y: -1050, width: 1536, height: 1050}).x,
+    0.8, 'divider follows the resized edge');
+equal(C.resizeSplit(dual[0], 'left', {x: true, side: null}, {x: -100, y: -1050, width: 10, height: 1050}).x,
+    0.1, 'divider is clamped');
 const tracker = new C.EdgeTracker();
 const edge = C.edgeCandidate(dual, 1819, -500);
 equal(tracker.update(edge, 0, 250), null, 'start dwell');
