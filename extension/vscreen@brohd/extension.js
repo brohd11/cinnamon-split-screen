@@ -45,7 +45,7 @@ class VScreen {
         this._connect(global.window_manager, 'size-change', (_wm, actor, kind, oldRect) =>
             this._sizeChange(actor.meta_window, kind, oldRect));
         this._connect(global.window_manager, 'show-tile-preview', () => {
-            if (this.drag && this._monitorAt(...global.get_pointer())) Main.wm._hideTilePreview();
+            if (this.drag && (this.drag.target || this._monitorAt(...global.get_pointer()))) Main.wm._hideTilePreview();
         });
         this._connect(global.stage, 'captured-event', (_stage, event) => {
             if (this.drag && event.type() === Clutter.EventType.KEY_PRESS &&
@@ -282,7 +282,9 @@ class VScreen {
     }
 
     _move(window, rect) {
-        window.move_resize_frame(true, Math.round(rect.x), Math.round(rect.y),
+        // Not a user op: Muffin then keeps the old position when it rounds the
+        // size to resize increments (gnome-terminal character cells).
+        window.move_resize_frame(false, Math.round(rect.x), Math.round(rect.y),
             Math.max(1, Math.round(rect.width)), Math.max(1, Math.round(rect.height)));
     }
 
@@ -364,8 +366,26 @@ class VScreen {
     _sampleDrag() {
         const drag = this.drag;
         if (!drag || !drag.moving || drag.keyboard || drag.cancelled || !drag.moved) return null;
-        const [x, y] = global.get_pointer();
+        const [x, y, mask] = global.get_pointer();
         const monitor = this._monitorAt(x, y);
+        // Alt while dragging: position-based zones, no edge or dwell needed.
+        // Other monitors are treated as a single region and are not managed.
+        if (mask & Clutter.ModifierType.MOD1_MASK) {
+            drag.tracker.reset();
+            if (monitor) {
+                const zone = Core.altZoneFor(monitor.regions, x, y);
+                return zone ? {...zone, monitor: monitor.key, vsMonitor: monitor} : null;
+            }
+            const workspace = global.workspace_manager.get_active_workspace();
+            for (let i = 0; i < global.display.get_n_monitors(); i++) {
+                const bounds = Core.copyRect(global.display.get_monitor_geometry(i));
+                if (!Core.contains(bounds, x, y)) continue;
+                const area = Core.copyRect(workspace.get_work_area_for_monitor(i));
+                const zone = Core.altZoneFor([{index: 0, bounds, area}], x, y);
+                return zone ? {...zone, monitor: `monitor:${i}`, vsMonitor: null} : null;
+            }
+            return null;
+        }
         const candidate = monitor ? Core.edgeCandidate(monitor.regions, x, y, this.internalEdges) : null;
         if (candidate) candidate.key = `${monitor.key}:${candidate.key}`;
         const ready = drag.tracker.update(candidate, GLib.get_monotonic_time() / 1000, this.dwellMs);
@@ -401,8 +421,16 @@ class VScreen {
                 if (drag.initialPlacement) this._applyPlacement(window);
                 else this._restore(window, drag.initialRect);
             } else if (target) {
-                record.state.assign(drag.original, target.monitor, target.region, target.kind);
-                this._applyPlacement(window);
+                if (target.vsMonitor === null) {
+                    this._withGuard(window, () => {
+                        this._clearNativeState(window);
+                        this._move(window, target.rect);
+                        if (target.kind === 'full') window.maximize(Meta.MaximizeFlags.BOTH);
+                    });
+                } else {
+                    record.state.assign(drag.original, target.monitor, target.region, target.kind);
+                    this._applyPlacement(window);
+                }
             }
         });
     }
@@ -415,8 +443,7 @@ class VScreen {
 
     _showPreview(rect) {
         if (!this.preview) {
-            this.preview = new St.Widget({reactive: false, can_focus: false,
-                style: 'background-color: rgba(70, 140, 230, 0.25); border: 2px solid rgba(100, 175, 255, 0.9);'});
+            this.preview = new St.Widget({reactive: false, can_focus: false, style_class: 'tile-preview'});
             Main.uiGroup.add_child(this.preview);
         }
         this.preview.set_position(rect.x, rect.y);

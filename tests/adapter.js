@@ -77,8 +77,8 @@ function desktop() {
             const i = screens.findIndex(m => Core.contains(m.bounds, this.rect.x + this.rect.width / 2, this.rect.y + this.rect.height / 2));
             return work(i < 0 ? 0 : i);
         }
-        move_resize_frame(_user, x, y, width, height) {
-            this.moves++;
+        move_resize_frame(user, x, y, width, height) {
+            this.moves++; this.userOp = user;
             this.rect = {x, y, width: Math.max(width, this.minimum), height};
             this.emit('position-changed'); this.emit('size-changed');
         }
@@ -133,7 +133,7 @@ function desktop() {
     const mocks = {gi: {Meta, GLib: {SOURCE_REMOVE: false, get_monotonic_time: () => now * 1000},
         Gio: {DBus: {session: sessionBus, system: systemBus}, DBusCallFlags: {NONE: 0}, DBusSignalFlags: {NONE: 0},
             Cancellable: class { cancel() {} }},
-        Clutter: {EventType: {KEY_PRESS: 1}, KEY_Escape: 27, EVENT_PROPAGATE: false},
+        Clutter: {EventType: {KEY_PRESS: 1}, KEY_Escape: 27, EVENT_PROPAGATE: false, ModifierType: {MOD1_MASK: 8}},
         St: {Widget: class { constructor() { this.visible = false; } set_position(x, y) { this.x = x; this.y = y; }
             set_size(width, height) { this.width = width; this.height = height; }
             show() { this.visible = true; } hide() { this.visible = false; } destroy() { this.destroyed = true; }}}},
@@ -144,7 +144,7 @@ function desktop() {
     function begin(window, op = Meta.GrabOp.MOVING) { display.emit('grab-op-begin', display, window, op); }
     function end(window) { display.emit('grab-op-end', display, window, Meta.GrabOp.MOVING); advance(); }
     return {extension, Window, advance, begin, end, Meta, display, wm, stage, layoutManager,
-        pointer: (x, y) => { pointer = [x, y, 0]; }, screens: () => screens,
+        pointer: (x, y, mask = 0) => { pointer = [x, y, mask]; }, screens: () => screens,
         setScreens: s => { screens = s; layoutManager.emit('monitors-changed'); },
         dbusFail: () => { dbusError = true; }, wayland: () => { wayland = true; },
         preview: () => preview, nativeHides: () => nativeHides,
@@ -165,6 +165,7 @@ function desktop() {
     w.maximize(); d.advance(200);
     equal(w.rect, {x: 0, y: 30, width: 1920, height: 1050}, 'native maximize intercepted once despite two notify signals');
     equal(w.get_maximized(), 0, 'native maximize constraints removed');
+    equal(w.userOp, false, 'placement is not a user op, so resize increments keep position');
     w.maximize(); d.advance(200);
     equal(w.rect, original, 'second native maximize restores original');
     const laptop = new d.Window({x: 100, y: 1200, width: 600, height: 500});
@@ -282,6 +283,29 @@ function desktop() {
     d.end(w); d.advance(200);
     equal(w.tile_mode, 0, 'native tile constraint cleared after drop');
     equal(w.rect, {x: 2880, y: 30, width: 960, height: 1050}, 'native side tile replaced by half-region target');
+    d.finish();
+}
+{
+    const ALT = 8;
+    const d = desktop(); d.start(); const w = new d.Window();
+    d.pointer(500, 300); d.begin(w); d.advance();
+    d.pointer(960, 500); d.advance(16);
+    check(!d.preview() || !d.preview().visible, 'interior drag without Alt shows no preview');
+    d.pointer(960, 500, ALT); d.advance(16);
+    check(d.preview().visible, 'Alt shows preview without reaching an edge');
+    equal(d.preview().width, 1920, 'Alt centre previews whole region');
+    d.pointer(100, 100, ALT); d.advance(16);
+    equal([d.preview().width, d.preview().height], [960, 525], 'Alt corner previews quarter');
+    d.end(w); d.advance(200);
+    equal(w.rect, {x: 0, y: 30, width: 960, height: 525}, 'Alt drop snaps quarter');
+    equal(d.extension.windows.get(w).state.placement.kind, 'top-left', 'Alt quarter is a managed placement');
+    d.pointer(100, 100); d.begin(w); d.advance();
+    d.pointer(1800, 1700, ALT); d.advance(16); d.end(w); d.advance(200);
+    equal(w.rect, {x: 960, y: 1110, width: 960, height: 1050}, 'Alt snaps on an ordinary monitor');
+    equal(d.extension.windows.get(w).state.placement, null, 'ordinary monitor snap is not managed');
+    d.pointer(1800, 1700); d.begin(w); d.advance();
+    d.pointer(960, 1600, ALT); d.advance(16); d.end(w); d.advance(200);
+    equal(w.get_maximized(), 3, 'Alt centre on ordinary monitor natively maximizes');
     d.finish();
 }
 {

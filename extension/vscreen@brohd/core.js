@@ -65,10 +65,34 @@ function regionForWindow(regions, frame) {
 }
 
 function targetRect(region, kind) {
-    const r = copyRect(region.area), left = Math.floor(r.width / 2);
-    if (kind === 'left') r.width = left;
-    if (kind === 'right') { r.x += left; r.width -= left; }
+    const r = copyRect(region.area);
+    const left = Math.floor(r.width / 2);
+    const top = Math.floor(r.height / 2);
+    if (kind === 'left') { r.width = left; }
+    else if (kind === 'right') { r.x += left; r.width -= left; }
+    else if (kind === 'top-left') { r.width = left; r.height = top; }
+    else if (kind === 'top-right') { r.x += left; r.width -= left; r.height = top; }
+    else if (kind === 'bottom-left') { r.width = left; r.y += top; r.height -= top; }
+    else if (kind === 'bottom-right') { r.x += left; r.width -= left; r.y += top; r.height -= top; }
     return r;
+}
+
+// Alt-drag zones cover the whole region: the centre 20% column fills it, each
+// side takes the matching half, and the top/bottom 30% of a side is a quarter.
+function altZoneFor(regions, x, y) {
+    const region = regionAt(regions, x, y);
+    if (!region) return null;
+    const r = region.area;
+    const xFrac = (x - r.x) / r.width, yFrac = (y - r.y) / r.height;
+    let kind;
+    if (xFrac >= 0.40 && xFrac < 0.60) kind = 'full';
+    else {
+        const side = xFrac < 0.40 ? 'left' : 'right';
+        if (yFrac < 0.30) kind = `top-${side}`;
+        else if (yFrac >= 0.70) kind = `bottom-${side}`;
+        else kind = side;
+    }
+    return {key: `${region.index}:${kind}`, region: region.index, kind, rect: targetRect(region, kind)};
 }
 
 function edgeCandidate(regions, x, y, internalEdges = true, band = 12) {

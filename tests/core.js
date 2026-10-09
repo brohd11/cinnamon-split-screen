@@ -35,6 +35,19 @@ equal(C.edgeCandidate(dual, 1820, -500).kind, 'left', 'approach inner boundary f
 equal(C.edgeCandidate(dual, 1819, -500, false), null, 'internal edges disabled');
 equal(C.edgeCandidate(dual, -100, -500, false).internal, false, 'outer edge remains');
 equal(C.edgeCandidate(dual, 400, -500), null, 'interior does not snap');
+const altKind = (x, y) => C.altZoneFor(dual, x, y).kind;
+equal(altKind(860, -500), 'full', 'alt centre column fills region');
+equal(C.altZoneFor(dual, 860, -500).rect, dual[0].area, 'alt full rect is region work area');
+equal([altKind(667, -500), altKind(668, -500)], ['left', 'full'], 'alt centre starts at 40%');
+equal([altKind(1051, -500), altKind(1052, -500)], ['full', 'right'], 'alt centre ends at 60%');
+equal(altKind(0, -525), 'left', 'alt side is half');
+equal(altKind(667, -1000), 'top-left', 'alt corner spans the whole side width');
+equal(C.altZoneFor(dual, 0, -1040).rect, {x: -100, y: -1050, width: 960, height: 525}, 'alt top-left quarter');
+equal(C.altZoneFor(dual, 1700, -10).rect, {x: 860, y: -525, width: 960, height: 525}, 'alt bottom-right quarter');
+equal(C.altZoneFor(dual, 2000, -500).region, 1, 'alt zones are per region');
+equal(C.altZoneFor(dual, 3740, -500), null, 'alt outside regions');
+equal(C.targetRect({area: {x: 0, y: 0, width: 641, height: 1081}}, 'bottom-right'),
+    {x: 320, y: 540, width: 321, height: 541}, 'quarter remainder');
 const tracker = new C.EdgeTracker();
 const edge = C.edgeCandidate(dual, 1819, -500);
 equal(tracker.update(edge, 0, 250), null, 'start dwell');

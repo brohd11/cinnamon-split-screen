@@ -35,4 +35,6 @@ const loaded = imports.misc.fileUtils.requireModule(`${ARGV[0]}/core.js`, ARGV[0
 check(typeof loaded.regionsFor === 'function', 'Geometry exported by Cinnamon module loader');
 check(typeof loaded.WindowState === 'function', 'State exported by Cinnamon module loader');
 check(typeof loaded.EdgeTracker === 'function', 'Dwell exported by Cinnamon module loader');
+check(typeof loaded.altZoneFor === 'function', 'Alt zones exported by Cinnamon module loader');
+check(imports.gi.Clutter.ModifierType.MOD1_MASK === 8, 'Alt modifier mask matches adapter mock');
 print(`Installed Cinnamon API: ${assertions} assertions passed`);
