@@ -1,0 +1,38 @@
+{
+    "intro": {
+        "type": "label",
+        "description": "VScreen divides an ultrawide display into window regions. Enable the extension once to start automatically at login. App fullscreen still spans the whole display."
+    },
+    "monitor": {
+        "type": "combobox",
+        "default": "auto",
+        "description": "Display",
+        "options": {"Automatically detect XREAL": "auto"},
+        "tooltip": "Connected displays appear while the extension is enabled. Automatic detection activates all displays identified as XREAL."
+    },
+    "layout-32": {
+        "type": "combobox",
+        "default": "dual",
+        "description": "32:9 layout",
+        "options": {"Two equal regions": "dual", "Three regions: quarter / half / quarter": "triple"}
+    },
+    "layout-info": {
+        "type": "label",
+        "description": "21:9 automatically uses a 16:9 region and a narrow right region. 16:9 and other aspect ratios use normal Cinnamon behavior. Set your resolution in Display Settings."
+    },
+    "internal-edges": {
+        "type": "switch",
+        "default": true,
+        "description": "Snap at internal region boundaries"
+    },
+    "dwell-ms": {
+        "type": "spinbutton",
+        "default": 250,
+        "min": 100,
+        "max": 1000,
+        "step": 50,
+        "units": "milliseconds",
+        "description": "Pause before snapping at an internal boundary",
+        "dependency": "internal-edges"
+    }
+}
