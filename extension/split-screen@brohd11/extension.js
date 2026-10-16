@@ -332,9 +332,20 @@ class SplitScreen {
 
     _move(window, rect) {
         // Not a user op: Muffin then keeps the old position when it rounds the
-        // size to resize increments (gnome-terminal character cells).
+        // size to resize increments (gnome-terminal character cells), and
+        // _centreSlack() can centre the rounded-down frame in its slot.
         window.move_resize_frame(false, Math.round(rect.x), Math.round(rect.y),
             Math.max(1, Math.round(rect.width)), Math.max(1, Math.round(rect.height)));
+    }
+
+    // Size hints leave up to one cell of slack; split it around the window
+    // rather than leaving it all at the bottom/right. A move cannot re-round.
+    _centreSlack(window, rect) {
+        const actual = window.get_frame_rect();
+        const dx = Math.round(rect.width) - actual.width, dy = Math.round(rect.height) - actual.height;
+        if (dx < 0 || dy < 0 || (!dx && !dy)) return;
+        const x = Math.round(rect.x) + Math.floor(dx / 2), y = Math.round(rect.y) + Math.floor(dy / 2);
+        if (x !== actual.x || y !== actual.y) window.move_frame(false, x, y);
     }
 
     _applyPlacement(window) {
@@ -344,7 +355,11 @@ class SplitScreen {
         const region = monitor && monitor.regions.find(r => r.index === p.region);
         if (!region) return;
         const rect = Core.targetRect(region, p.kind, this._split(p.monitor, p.region));
-        this._withGuard(window, () => { this._clearNativeState(window); this._move(window, rect); });
+        this._withGuard(window, () => {
+            this._clearNativeState(window);
+            this._move(window, rect);
+            this._centreSlack(window, rect);
+        });
         const revision = record.revision;
         // One check, no resize loop: terminals and other apps can enforce size hints.
         this._later(() => {
@@ -355,6 +370,9 @@ class SplitScreen {
                 const original = record.state.release();
                 this._restore(window, original);
                 global.log('Split Screen: window minimum size exceeds its region; restored the window.');
+            } else {
+                // The client may settle on its size after the first check.
+                this._withGuard(window, () => this._centreSlack(window, rect));
             }
         }, 150);
     }

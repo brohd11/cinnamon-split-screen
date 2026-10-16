@@ -84,8 +84,15 @@ function desktop() {
         }
         move_resize_frame(user, x, y, width, height) {
             this.moves++; this.userOp = user;
-            this.rect = {x, y, width: Math.max(width, this.minimum), height};
+            // Like terminal size hints: round down to whole cells, keep the position.
+            const inc = this.increment || {width: 1, height: 1};
+            this.rect = {x, y, width: Math.max(width - width % inc.width, this.minimum),
+                height: height - height % inc.height};
             this.emit('position-changed'); this.emit('size-changed');
+        }
+        move_frame(user, x, y) {
+            this.userOp = user; this.rect = {...this.rect, x, y};
+            this.emit('position-changed');
         }
         maximize() {
             const old = this.get_frame_rect(); this.nativeRestore = old; this.nativeMaximizes++;
@@ -410,6 +417,19 @@ function desktop() {
     equal(d.edgeTiling(), true, 'disable restores native edge tiling');
     equal(d.stored['restore-edge-tiling'], false, 'restore flag cleared');
     equal(d.handlers.size, 0, 'disable releases the tile shortcuts');
+}
+{
+    const d = desktop(); d.start();
+    const term = rect => { const w = new d.Window(rect); w.increment = {width: 8, height: 17}; return w; };
+    const top = term({x: 100, y: 100, width: 500, height: 400});
+    const bottom = term({x: 100, y: 600, width: 500, height: 400});
+    d.push('left', top); d.advance(200); d.push('up', top); d.advance(200);
+    d.push('left', bottom); d.advance(200); d.push('down', bottom); d.advance(200);
+    equal(top.rect, {x: 0, y: 37, width: 960, height: 510}, 'cell slack is centred in the top quarter');
+    equal(bottom.rect, {x: 0, y: 562, width: 960, height: 510}, 'and in the bottom quarter');
+    const moves = top.moves + bottom.moves; d.advance(3000);
+    equal(top.moves + bottom.moves, moves, 'centring does not resize again');
+    d.finish();
 }
 {
     const d = desktop(); d.setEdgeTiling(false); d.stored['restore-edge-tiling'] = true;

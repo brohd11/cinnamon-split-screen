@@ -21,7 +21,7 @@ signal(Cinnamon.WM, 'show-tile-preview', ['MetaWindow', 'MetaRectangle', 'gint']
 for (const name of ['unmanaged', 'position-changed', 'size-changed']) signal(Meta.Window, name, []);
 signal(Meta.Window, 'monitor-changed', ['gint']);
 for (const name of ['get_frame_rect', 'get_maximized', 'is_fullscreen', 'allows_resize', 'allows_move',
-    'get_work_area_current_monitor', 'move_resize_frame', 'maximize', 'unmaximize'])
+    'get_work_area_current_monitor', 'move_resize_frame', 'move_frame', 'maximize', 'unmaximize'])
     check(typeof Meta.Window.prototype[name] === 'function', `Missing window API: ${name}`);
 for (const name of ['get_n_monitors', 'get_monitor_geometry', 'get_monitor_name'])
     check(typeof Meta.Display.prototype[name] === 'function', `Missing display API: ${name}`);

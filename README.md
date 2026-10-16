@@ -7,7 +7,7 @@ A Cinnamon extension for tiling windows.
 
 ## Install
 
-Target: Linux Mint 22.3 / Cinnamon 6.6, **X11**. Python 3 is needed by the installer; the extension runs in Cinnamon's JavaScript runtime. Cinnamon on other Linux distributions can use the same extension, but other desktops and Wayland are not supported by this version.
+Target: Linux Mint 22+ / Cinnamon 6.4+, **X11**. Python 3 is needed by the installer; the extension runs in Cinnamon's JavaScript runtime. Cinnamon on other Linux distributions can use the same extension, but other desktops and Wayland are not supported by this version.
 
 ```sh
 cd cinnamon-split-screen
