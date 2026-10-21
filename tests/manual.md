@@ -1,6 +1,6 @@
 # Graphical acceptance checklist
 
-Status: **not run**. Requires a Cinnamon 6.6 X11 session and preferably XREAL hardware. Headless tests cannot prove native drag grabs, application title bars, animations, or visual frame placement.
+Status: **not run**. Requires a Cinnamon 6.6 X11 session and, for glasses steps, the AR variant (`./install.sh --ar`) with XREAL hardware. Headless tests cannot prove native drag grabs, application title bars, animations, or visual frame placement.
 
 Record Cinnamon/Muffin versions, GPU/driver, session type, glasses model, display mode, scale, application versions, and any other window-management extensions when reporting results.
 

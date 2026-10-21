@@ -1,0 +1,9 @@
+{
+    "uuid": "split-screen-ar@brohd11",
+    "name": "Split Screen for AR Glasses",
+    "description": "Split Screen tiling plus virtual screens for ultrawide displays such as XREAL glasses. Each screen tiles like its own monitor; fullscreen still uses the whole display.",
+    "cinnamon-version": ["6.4"],
+    "version": "0.1.0",
+    "url": "",
+    "max-instances": 1
+}

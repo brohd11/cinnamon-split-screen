@@ -1,0 +1,23 @@
+{
+    "intro": {
+        "type": "label",
+        "description": "Split Screen for AR glasses tiles windows on every display and splits the selected ultrawide display, such as XREAL glasses, into separate screens. Snap windows to halves and quarters of each screen, and drag the shared edge between tiles to resize them together. Enable the extension once to start automatically at login. App fullscreen still spans the whole display."
+    },
+    "monitor": {
+        "type": "combobox",
+        "default": "auto",
+        "description": "Split into virtual screens",
+        "options": {"Automatically detect XREAL": "auto"},
+        "tooltip": "Connected displays appear while the extension is enabled. Automatic detection activates all displays identified as XREAL."
+    },
+    "layout-32": {
+        "type": "combobox",
+        "default": "dual",
+        "description": "32:9 layout",
+        "options": {"Two equal regions": "dual", "Three regions: quarter / half / quarter": "triple"}
+    },
+    "layout-info": {
+        "type": "label",
+        "description": "21:9 automatically uses a 16:9 region and a narrow right region. 16:9 and other aspect ratios use normal Cinnamon behavior. Set your resolution in Display Settings."
+    }
+}

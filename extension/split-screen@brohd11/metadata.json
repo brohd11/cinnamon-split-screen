@@ -1,7 +1,7 @@
 {
     "uuid": "split-screen@brohd11",
     "name": "Split Screen",
-    "description": "Tile windows into halves and quarters with linked, resizable dividers, and split ultrawide displays such as XREAL glasses into separate screens. Fullscreen still uses the whole display.",
+    "description": "Tile windows into halves and quarters with linked, resizable dividers. Alt-drag, edge drags and Super+Arrow all use the same tiles.",
     "cinnamon-version": ["6.4"],
     "version": "0.1.0",
     "url": "",

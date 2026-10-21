@@ -32,11 +32,17 @@ for (const name of ['fullscreen', 'tile-mode', 'maximized-horizontally', 'maximi
     check(properties.includes(name), `Missing property: ${name}`);
 imports.searchPath.unshift('/usr/share/cinnamon/js');
 const loaded = imports.misc.fileUtils.requireModule(`${ARGV[0]}/core.js`, ARGV[0], {}, 'extension');
-check(typeof loaded.regionsFor === 'function', 'Geometry exported by Cinnamon module loader');
+check(typeof loaded.splitRegions === 'function', 'Geometry exported by Cinnamon module loader');
 check(typeof loaded.WindowState === 'function', 'State exported by Cinnamon module loader');
 check(typeof loaded.EdgeTracker === 'function', 'Dwell exported by Cinnamon module loader');
 check(typeof loaded.altZoneFor === 'function', 'Alt zones exported by Cinnamon module loader');
 check(typeof loaded.pushTile === 'function', 'Tile shortcuts exported by Cinnamon module loader');
+if (ARGV[1]) {
+    // The AR build's layouts require('./core') from the same flat directory.
+    const layouts = imports.misc.fileUtils.requireModule(`${ARGV[1]}/layouts.js`, ARGV[1], {}, 'extension');
+    check(layouts.regionsFor({x: 0, y: 0, width: 3840, height: 1080}, {x: 0, y: 0, width: 3840, height: 1080})
+        .length === 2, 'AR layouts load through Cinnamon module loader');
+}
 check(typeof Meta.keybindings_set_custom_handler === 'function', 'Keybinding override API');
 const muffin = imports.gi.Gio.SettingsSchemaSource.get_default().lookup('org.cinnamon.muffin', true);
 check(muffin && muffin.has_key('edge-tiling'), 'Muffin edge-tiling setting');

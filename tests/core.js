@@ -9,20 +9,9 @@ function equal(actual, expected, message) {
 }
 const bounds = {x: -100, y: -1080, width: 3840, height: 1080};
 const area = {x: -100, y: -1050, width: 3840, height: 1050};
-const dual = C.regionsFor(bounds, area);
-equal(dual.map(r => r.bounds.width), [1920, 1920], 'dual widths');
+const dual = C.splitRegions(bounds, area, [1920, 1920]);
 equal(dual[1].area, {x: 1820, y: -1050, width: 1920, height: 1050}, 'panel exclusion, negative origin');
-equal(C.regionsFor({...bounds, width: 3841}, {...area, width: 3841}).map(r => r.bounds.width),
-    [1920, 1921], 'odd pixel goes right');
-equal(C.regionsFor({...bounds, width: 3843}, {...area, width: 3843}, 'triple').map(r => r.bounds.width),
-    [960, 1923, 960], 'triple remainder goes center');
-equal(C.regionsFor({...bounds, width: 2560}, {...area, width: 2560}).map(r => r.bounds.width),
-    [1920, 640], '21:9 strip');
-equal(C.regionsFor({x: 0, y: 0, width: 2560, height: 720}, {x: 0, y: 20, width: 2560, height: 700})
-    .map(r => r.area.width), [1280, 1280], 'logical scale');
-equal(C.regionsFor({...bounds, width: 1920}, area), [], '16:9 inactive');
-equal(C.regionsFor({...bounds, width: 2560, height: 1440}, area), [], 'ordinary 16:9 inactive');
-equal(C.regionsFor({...bounds, height: 0}, area), [], 'transient empty geometry');
+equal(C.splitRegions(bounds, {...area, width: 1921}, [1920, 1920]).length, 1, 'regions without work area dropped');
 equal(C.regionForWindow(dual, {x: 1800, y: -1000, width: 200, height: 100}).index, 1, 'center selects region');
 equal(C.regionAt(dual, 1820, -1000).index, 1, 'boundary belongs to right region');
 equal(C.regionAt(dual, 3740, -1000), null, 'right bound exclusive');

@@ -13,6 +13,7 @@ const PUSH_TILE = ['left', 'right', 'up', 'down'];
 class SplitScreen {
     constructor(meta) {
         this.meta = meta;
+        this.name = meta.name || 'Split Screen';
         this.alive = false;
         this.signals = [];
         this.sources = new Set();
@@ -32,12 +33,15 @@ class SplitScreen {
 
     enable() {
         if (Meta.is_wayland_compositor())
-            throw new Error('Split Screen supports Cinnamon X11 sessions. Wayland has not been validated.');
+            throw new Error(`${this.name} supports Cinnamon X11 sessions. Wayland has not been validated.`);
+        // Variants (such as the AR glasses build) share tiling ownership; only one may run.
+        if (global.__splitScreenVariant)
+            throw new Error(`${this.name} cannot run while ${global.__splitScreenVariant} is enabled.`);
+        global.__splitScreenVariant = this.meta.uuid;
+        this.variantOwner = true;
         this.alive = true;
         this.settings = new Settings.ExtensionSettings(this, this.meta.uuid);
-        for (const [key, property] of [['monitor', 'monitorChoice'], ['layout-32', 'layout32'],
-            ['internal-edges', 'internalEdges'], ['dwell-ms', 'dwellMs']])
-            this.settings.bind(key, property, () => this._scheduleRefresh());
+        this._bindSettings();
         this._takeOverTiling();
 
         this._connect(Main.layoutManager, 'monitors-changed', () => this._scheduleRefresh());
@@ -69,6 +73,11 @@ class SplitScreen {
         this._refresh();
     }
 
+    _bindSettings() {
+        for (const [key, property] of [['internal-edges', 'internalEdges'], ['dwell-ms', 'dwellMs']])
+            this.settings.bind(key, property, () => this._scheduleRefresh());
+    }
+
     // Split Screen owns tiling while enabled: Muffin keeps no split sizes and its
     // tiles cannot describe a region, so its edge tiling is switched off and
     // the Super+arrow tile shortcuts are handled here instead.
@@ -86,7 +95,7 @@ class SplitScreen {
             Meta.keybindings_set_custom_handler(`push-tile-${dir}`, (_display, window) => {
                 if (!this.alive) return;
                 try { this._pushTile(window, dir); }
-                catch (error) { global.logError(error, 'Split Screen'); }
+                catch (error) { global.logError(error, this.name); }
             });
     }
 
@@ -103,7 +112,7 @@ class SplitScreen {
         const id = object.connect(name, (...args) => {
             if (!this.alive) return undefined;
             try { return callback(...args); }
-            catch (error) { global.logError(error, 'Split Screen'); return undefined; }
+            catch (error) { global.logError(error, this.name); return undefined; }
         });
         bucket.push([object, id]);
     }
@@ -118,7 +127,7 @@ class SplitScreen {
         const run = () => {
             this.sources.delete(id);
             if (this.alive) {
-                try { callback(); } catch (error) { global.logError(error, 'Split Screen'); }
+                try { callback(); } catch (error) { global.logError(error, this.name); }
             }
             return GLib.SOURCE_REMOVE;
         };
@@ -149,9 +158,9 @@ class SplitScreen {
                 if (!this.alive || generation !== this.refreshGeneration) return;
                 let physical = [];
                 try { physical = connection.call_finish(result).deep_unpack()[1]; }
-                catch (error) { global.log(`Split Screen: display identity unavailable; using monitor names (${error.message})`); }
+                catch (error) { global.log(`${this.name}: display identity unavailable; using monitor names (${error.message})`); }
                 try { this._updateMonitors(physical); }
-                catch (error) { global.logError(error, 'Split Screen display update'); }
+                catch (error) { global.logError(error, `${this.name} display update`); }
             });
     }
 
@@ -167,27 +176,21 @@ class SplitScreen {
                 name: unpack(props['display-name']) || product,
                 identification: [vendor, product, serial, unpack(props['display-name'])].join(' ')});
         }
-        const options = {'Automatically detect XREAL': 'auto'};
-        const selected = [];
+        const selected = [], displays = [];
         const workspace = global.workspace_manager.get_active_workspace();
         for (let index = 0; index < global.display.get_n_monitors(); index++) {
             const name = global.display.get_monitor_name(index) || `Display ${index + 1}`;
             const identity = identities.get(index) || {key: `name:${name}:${index}`, name, identification: name};
             const bounds = Core.copyRect(global.display.get_monitor_geometry(index));
             const area = Core.copyRect(workspace.get_work_area_for_monitor(index));
-            options[`${identity.name} (${identity.connector || index + 1})`] = identity.key;
-            const matches = this.monitorChoice === 'auto' ? /xreal/i.test(`${name} ${identity.identification}`) :
-                this.monitorChoice === identity.key;
-            // Other monitors are one plain region: Alt-drag tiles link there,
+            displays.push({index, name, identity});
+            // Unsplit monitors are one plain region: Alt-drag tiles link there,
             // while edge drags and maximize stay native Cinnamon behaviour.
-            const regions = matches ? Core.regionsFor(bounds, area, this.layout32) : [];
+            const regions = this._regionsFor(identity, name, bounds, area);
             selected.push(regions.length ? {key: identity.key, index, bounds, area, regions, plain: false} :
                 {key: identity.key, index, bounds, area, regions: [{index: 0, bounds, area}], plain: true});
         }
-        if (!Object.values(options).includes(this.monitorChoice))
-            options['Previously selected display (disconnected)'] = this.monitorChoice;
-        if (JSON.stringify(options) !== JSON.stringify(this.settings.getOptions('monitor')))
-            this.settings.setOptions('monitor', options);
+        this._monitorsUpdated(displays);
         this.monitors = selected;
         this.topologyPending = false;
         for (const key of Array.from(this.splits.keys())) {
@@ -208,6 +211,11 @@ class SplitScreen {
             }
         }
     }
+
+    // Variant hooks. The base never splits a display into regions.
+    _regionsFor(_identity, _name, _bounds, _area) { return []; }
+
+    _monitorsUpdated(_displays) {}
 
     _monitorAt(x, y) {
         if (this.topologyPending) return null;
@@ -369,7 +377,7 @@ class SplitScreen {
             if (actual.width > rect.width + 4 || actual.height > rect.height + 4) {
                 const original = record.state.release();
                 this._restore(window, original);
-                global.log('Split Screen: window minimum size exceeds its region; restored the window.');
+                global.log(`${this.name}: window minimum size exceeds its region; restored the window.`);
             } else {
                 // The client may settle on its size after the first check.
                 this._withGuard(window, () => this._centreSlack(window, rect));
@@ -611,8 +619,9 @@ class SplitScreen {
 
     disable() {
         this._cancelDrag();
-        try { this._releaseTiling(); }
-        catch (error) { global.logError(error, 'Split Screen tiling restore'); }
+        // A refused variant must not release the running variant's shortcuts.
+        try { if (this.variantOwner) this._releaseTiling(); }
+        catch (error) { global.logError(error, `${this.name} tiling restore`); }
         if (this.cancellable) this.cancellable.cancel();
         this.refreshGeneration++;
         this._disconnect(this.signals);
@@ -621,7 +630,7 @@ class SplitScreen {
         for (const [window, record] of this.windows) {
             this._disconnect(record.signals);
             try { this._restore(window, record.state.release()); }
-            catch (error) { global.logError(error, 'Split Screen restore'); }
+            catch (error) { global.logError(error, `${this.name} restore`); }
         }
         this.alive = false;
         for (const id of Array.from(this.sources)) this._cancel(id);
@@ -633,6 +642,8 @@ class SplitScreen {
         this.splits.clear();
         if (this.settings) this.settings.finalize();
         this.settings = null;
+        if (this.variantOwner) delete global.__splitScreenVariant;
+        this.variantOwner = false;
     }
 }
 
